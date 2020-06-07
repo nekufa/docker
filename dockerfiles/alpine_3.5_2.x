@@ -1,4 +1,5 @@
-FROM alpine:3.5
+ARG IMG
+FROM ${IMG}
 MAINTAINER mail@racktear.com
 
 RUN addgroup -S tarantool \
@@ -11,6 +12,8 @@ RUN addgroup -S tarantool \
 ARG TNT_VER
 ENV TARANTOOL_VERSION=${TNT_VER} \
     TARANTOOL_DOWNLOAD_URL=https://github.com/tarantool/tarantool.git \
+    CURL_REPO=https://github.com/curl/curl.git \
+    CURL_TAG=curl-7_59_0 \
     GPERFTOOLS_REPO=https://github.com/gperftools/gperftools.git \
     GPERFTOOLS_TAG=gperftools-2.5 \
     LUAROCKS_URL=https://github.com/tarantool/luarocks/archive/6e6fe62d9409fe2103c0fd091cccb3da0451faf5.tar.gz \
@@ -35,7 +38,7 @@ RUN set -x \
     && apk add --no-cache --virtual .run-deps \
         libstdc++ \
         readline \
-        openssl \
+        libressl \
         yaml \
         lz4 \
         binutils \
@@ -49,12 +52,12 @@ RUN set -x \
         icu \
         ca-certificates \
     && apk add --no-cache --virtual .build-deps \
+        perl \
         gcc \
         g++ \
         cmake \
-        file \
         readline-dev \
-        openssl-dev \
+        libressl-dev \
         yaml-dev \
         lz4-dev \
         zlib-dev \
@@ -70,8 +73,18 @@ RUN set -x \
         libtool \
         linux-headers \
         go \
+        tcl \
         icu-dev \
         wget \
+    && : "---------- curl ----------" \
+    && mkdir -p /usr/src/curl \
+    && git clone "$CURL_REPO" /usr/src/curl \
+    && git -C /usr/src/curl checkout "$CURL_TAG" \
+    && (cd /usr/src/curl \
+        && ./buildconf \
+        && ./configure --prefix "/usr/local" \
+        && make -j \
+        && make install) \
     && : "---------- gperftools ----------" \
     && mkdir -p /usr/src/gperftools \
     && git clone "$GPERFTOOLS_REPO" /usr/src/gperftools \
@@ -91,11 +104,8 @@ RUN set -x \
     && git -C /usr/src/tarantool checkout "$TARANTOOL_VERSION" \
     && git -C /usr/src/tarantool submodule update --init --recursive \
     && (cd /usr/src/tarantool; \
-       echo "WARNING: Temporary fix for test/unit/cbus_hang test" ; \
-       git cherry-pick d7fa6d34ab4e0956fe8a80966ba628e0e3f81067 2>/dev/null || \
-           git cherry-pick --abort ; \
        cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo\
-             -DENABLE_BUNDLED_LIBYAML:BOOL=ON\
+             -DENABLE_BUNDLED_LIBYAML:BOOL=OFF\
              -DENABLE_BACKTRACE:BOOL=ON\
              -DENABLE_DIST:BOOL=ON\
              .) \
@@ -139,7 +149,7 @@ RUN set -x \
         cyrus-sasl-dev \
         mosquitto-dev \
         libev-dev \
-        wget \
+        libressl-dev \
         unzip \
     && mkdir -p /rocks \
     && : "---------- proj (for gis module) ----------" \

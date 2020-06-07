@@ -1,4 +1,5 @@
-FROM alpine:3.5
+ARG IMG
+FROM ${IMG}
 MAINTAINER mail@racktear.com
 
 RUN addgroup -S tarantool \
@@ -11,6 +12,8 @@ RUN addgroup -S tarantool \
 ARG TNT_VER
 ENV TARANTOOL_VERSION=${TNT_VER} \
     TARANTOOL_DOWNLOAD_URL=https://github.com/tarantool/tarantool.git \
+    CURL_REPO=https://github.com/curl/curl.git \
+    CURL_TAG=curl-7_59_0 \
     GPERFTOOLS_REPO=https://github.com/gperftools/gperftools.git \
     GPERFTOOLS_TAG=gperftools-2.5 \
     LUAROCKS_URL=https://github.com/tarantool/luarocks/archive/6e6fe62d9409fe2103c0fd091cccb3da0451faf5.tar.gz \
@@ -24,6 +27,7 @@ ENV TARANTOOL_VERSION=${TNT_VER} \
     LUAROCK_MEMCACHED_VERSION=1.0.1 \
     LUAROCK_TARANTOOL_PG_VERSION=2.0.2 \
     LUAROCK_TARANTOOL_MYSQL_VERSION=2.0.1 \
+    LUAROCK_TARANTOOL_CURL_VERSION=2.3.1 \
     LUAROCK_TARANTOOL_MQTT_VERSION=1.2.1 \
     LUAROCK_TARANTOOL_GIS_VERSION=1.0.0 \
     LUAROCK_TARANTOOL_PROMETHEUS_VERSION=1.0.4 \
@@ -44,7 +48,6 @@ RUN set -x \
         lua \
         tar \
         zip \
-        zlib \
         libunwind \
         icu \
         ca-certificates \
@@ -53,12 +56,10 @@ RUN set -x \
         gcc \
         g++ \
         cmake \
-        file \
         readline-dev \
         libressl-dev \
         yaml-dev \
         lz4-dev \
-        zlib-dev \
         binutils-dev \
         ncurses-dev \
         lua-dev \
@@ -73,6 +74,15 @@ RUN set -x \
         go \
         icu-dev \
         wget \
+    && : "---------- curl ----------" \
+    && mkdir -p /usr/src/curl \
+    && git clone "$CURL_REPO" /usr/src/curl \
+    && git -C /usr/src/curl checkout "$CURL_TAG" \
+    && (cd /usr/src/curl \
+        && ./buildconf \
+        && ./configure --prefix "/usr/local" \
+        && make -j \
+        && make install) \
     && : "---------- gperftools ----------" \
     && mkdir -p /usr/src/gperftools \
     && git clone "$GPERFTOOLS_REPO" /usr/src/gperftools \
@@ -92,9 +102,6 @@ RUN set -x \
     && git -C /usr/src/tarantool checkout "$TARANTOOL_VERSION" \
     && git -C /usr/src/tarantool submodule update --init --recursive \
     && (cd /usr/src/tarantool; \
-       echo "WARNING: Temporary fix for test/unit/cbus_hang test" ; \
-       git cherry-pick d7fa6d34ab4e0956fe8a80966ba628e0e3f81067 2>/dev/null || \
-           git cherry-pick --abort ; \
        cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo\
              -DENABLE_BUNDLED_LIBYAML:BOOL=OFF\
              -DENABLE_BACKTRACE:BOOL=ON\
@@ -140,7 +147,6 @@ RUN set -x \
         cyrus-sasl-dev \
         mosquitto-dev \
         libev-dev \
-        wget \
     && mkdir -p /rocks \
     && : "---------- proj (for gis module) ----------" \
     && wget -O proj.tar.gz http://download.osgeo.org/proj/proj-4.9.3.tar.gz \
@@ -165,36 +171,39 @@ RUN set -x \
     && rm -rf /usr/src/geos \
     && rm -rf /geos.tar.bz2 \
     && : "---------- luarocks ----------" \
-    && luarocks install lua-term \
-    && luarocks install ldoc \
+    && cd / \
+    && : "lua-term" \
+    && tarantoolctl rocks install lua-term \
     && : "avro" \
-    && luarocks install avro-schema $LUAROCK_AVRO_SCHEMA_VERSION \
+    && tarantoolctl rocks install avro-schema $LUAROCK_AVRO_SCHEMA_VERSION \
     && : "expirationd" \
-    && luarocks install expirationd $LUAROCK_EXPERATIOND_VERSION \
+    && tarantoolctl rocks install expirationd $LUAROCK_EXPERATIOND_VERSION \
     && : "queue" \
-    && luarocks install queue $LUAROCK_QUEUE_VERSION \
+    && tarantoolctl rocks install queue $LUAROCK_QUEUE_VERSION \
     && : "connpool" \
-    && luarocks install connpool $LUAROCK_CONNPOOL_VERSION \
+    && tarantoolctl rocks install connpool $LUAROCK_CONNPOOL_VERSION \
     && : "vshard" \
-    && luarocks install vshard $LUAROCK_VSHARD_VERSION \
+    && tarantoolctl rocks install vshard $LUAROCK_VSHARD_VERSION \
     && : "http" \
-    && luarocks install http $LUAROCK_HTTP_VERSION \
+    && tarantoolctl rocks install http $LUAROCK_HTTP_VERSION \
     && : "pg" \
-    && luarocks install pg $LUAROCK_TARANTOOL_PG_VERSION \
+    && tarantoolctl rocks install pg $LUAROCK_TARANTOOL_PG_VERSION \
     && : "mysql" \
-    && luarocks install mysql $LUAROCK_TARANTOOL_MYSQL_VERSION \
+    && tarantoolctl rocks install mysql $LUAROCK_TARANTOOL_MYSQL_VERSION \
     && : "memcached" \
-    && luarocks install memcached $LUAROCK_MEMCACHED_VERSION \
+    && tarantoolctl rocks install memcached $LUAROCK_MEMCACHED_VERSION \
     && : "metrics" \
     && tarantoolctl rocks install metrics $LUAROCK_METRICS_VERSION \
     && : "prometheus" \
-    && luarocks install prometheus $LUAROCK_TARANTOOL_PROMETHEUS_VERSION \
+    && tarantoolctl rocks install prometheus $LUAROCK_TARANTOOL_PROMETHEUS_VERSION \
+    && : "curl" \
+    && tarantoolctl rocks install tarantool-curl $LUAROCK_TARANTOOL_CURL_VERSION \
     && : "mqtt" \
-    && luarocks install mqtt $LUAROCK_TARANTOOL_MQTT_VERSION \
+    && tarantoolctl rocks install mqtt $LUAROCK_TARANTOOL_MQTT_VERSION \
     && : "gis" \
-    && luarocks install gis $LUAROCK_TARANTOOL_GIS_VERSION \
+    && tarantoolctl rocks install gis $LUAROCK_TARANTOOL_GIS_VERSION \
     && : "gperftools" \
-    && luarocks install gperftools $LUAROCK_TARANTOOL_GPERFTOOLS_VERSION \
+    && tarantoolctl rocks install gperftools $LUAROCK_TARANTOOL_GPERFTOOLS_VERSION \
     && : "---------- remove build deps ----------" \
     && apk del .build-deps
 
